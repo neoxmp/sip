@@ -3,6 +3,7 @@ package com.sipdoor.app
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.SurfaceHolder
 import android.view.View
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
@@ -30,6 +31,26 @@ class OngoingCallActivity : AppCompatActivity() {
         setupButtons()
         setupCallStateListener()
         startDurationCounter()
+        setupVideo()
+    }
+
+    private fun setupVideo() {
+        // Linphone'a SurfaceView'leri ver
+        binding.videoRemote.holder.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                service?.getCurrentCall()?.nativeVideoWindowId = binding.videoRemote
+            }
+            override fun surfaceChanged(holder: SurfaceHolder, f: Int, w: Int, h: Int) {}
+            override fun surfaceDestroyed(holder: SurfaceHolder) {}
+        })
+
+        binding.videoLocal.holder.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                service?.getCurrentCall()?.nativePreviewWindowId = binding.videoLocal
+            }
+            override fun surfaceChanged(holder: SurfaceHolder, f: Int, w: Int, h: Int) {}
+            override fun surfaceDestroyed(holder: SurfaceHolder) {}
+        })
     }
 
     private fun setupCallInfo() {
@@ -45,35 +66,30 @@ class OngoingCallActivity : AppCompatActivity() {
             service?.openDoor()
             showDoorOpenFeedback()
         }
-
         binding.btnHangUp.setOnClickListener {
             service?.hangUp()
             finish()
         }
-
         binding.btnMute.setOnClickListener {
             isMuted = service?.toggleMute() ?: false
             binding.btnMute.alpha = if (isMuted) 0.5f else 1.0f
             binding.btnMute.text = if (isMuted) "🔇 Açık" else "🎤 Sessiz"
         }
-
         binding.btnSpeaker.setOnClickListener {
             isSpeaker = service?.toggleSpeaker() ?: false
             binding.btnSpeaker.alpha = if (isSpeaker) 1.0f else 0.5f
             binding.btnSpeaker.text = if (isSpeaker) "🔊 Hoparlör" else "📱 Kulak"
         }
-
         setupDtmfPad()
     }
 
     private fun setupDtmfPad() {
-        val dtmfButtons = mapOf(
+        mapOf(
             binding.btn0 to '0', binding.btn1 to '1', binding.btn2 to '2',
             binding.btn3 to '3', binding.btn4 to '4', binding.btn5 to '5',
             binding.btn6 to '6', binding.btn7 to '7', binding.btn8 to '8',
             binding.btn9 to '9', binding.btnStar to '*', binding.btnHash to '#'
-        )
-        dtmfButtons.forEach { (btn, digit) ->
+        ).forEach { (btn, digit) ->
             btn.setOnClickListener {
                 service?.sendDtmf(digit)
                 binding.tvDtmfInput.append(digit.toString())
