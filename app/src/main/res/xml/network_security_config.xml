@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Yerel SIP sunucularına (192.168.x.x, 10.x.x.x) HTTP/cleartext UDP bağlantısına izin verir.
+    TLS kullanmayan SIP sunucuları için gereklidir.
+-->
+<network-security-config>
+    <!-- Yerel ağ adresleri için cleartext izni -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">192.168.0.0</domain>
+        <domain includeSubdomains="true">10.0.0.0</domain>
+        <domain includeSubdomains="true">172.16.0.0</domain>
+        <domain includeSubdomains="true">localhost</domain>
+    </domain-config>
+
+    <!-- Genel internet için TLS zorunlu -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
