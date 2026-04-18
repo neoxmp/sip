@@ -30,18 +30,11 @@ jobs:
           curl -sL "https://github.com/gradle/gradle/raw/v8.4.0/gradle/wrapper/gradle-wrapper.jar" \
             -o gradle/wrapper/gradle-wrapper.jar
 
-      - name: Linphone SDK indir
-        run: |
-          mkdir -p app/libs
-          curl -sL "https://linphone.org/maven_repository/org/linphone/linphone-sdk-android/5.3.0/linphone-sdk-android-5.3.0.aar" \
-            -o app/libs/linphone-sdk-android.aar
-          ls -lh app/libs/
-
       - name: gradlew izni
         run: chmod +x gradlew
 
       - name: APK derle
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleDebug --no-daemon
 
       - name: APK yükle
         uses: actions/upload-artifact@v4
