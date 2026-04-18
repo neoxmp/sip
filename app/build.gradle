@@ -35,12 +35,16 @@ android {
         jvmTarget = '17'
     }
 
-    // Linphone SDK için gerekli ABI filtreleri
     packagingOptions {
         jniLibs {
             useLegacyPackaging true
         }
     }
+}
+
+repositories {
+    google()
+    mavenCentral()
 }
 
 dependencies {
@@ -50,12 +54,9 @@ dependencies {
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.lifecycle:lifecycle-service:2.7.0'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
-
     implementation 'androidx.cardview:cardview:1.0.0'
-
-    // Linphone SDK - SIP/VoIP kütüphanesi
-    implementation 'org.linphone:linphone-sdk-android:5.3.3'
-
-    // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+
+    // Linphone SDK - local AAR olarak
+    implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'])
 }
