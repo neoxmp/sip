@@ -3,8 +3,11 @@ package com.sipdoor.app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -12,14 +15,10 @@ import androidx.core.content.ContextCompat
 import com.sipdoor.app.databinding.ActivityMainBinding
 import org.linphone.core.RegistrationState
 
-/**
- * Ana ekran: SIP hesap ayarları ve bağlantı durumu.
- */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: SipPreferences
-
     private val service get() = SipDoorApplication.instance.linphoneService
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,17 +28,16 @@ class MainActivity : AppCompatActivity() {
 
         prefs = SipPreferences(this)
         requestRequiredPermissions()
+        requestBatteryOptimizationExemption()
         loadSettings()
         setupListeners()
     }
 
     override fun onResume() {
         super.onResume()
-        // Kayıt durumunu izle
         service?.onRegistrationChanged = { state ->
             runOnUiThread { updateRegistrationStatus(state) }
         }
-        // Anlık durumu göster
         service?.getRegistrationState()?.let { updateRegistrationStatus(it) }
     }
 
@@ -56,8 +54,6 @@ class MainActivity : AppCompatActivity() {
             etPort.setText(prefs.port.toString())
             etDtmfCode.setText(prefs.doorDtmfCode)
             etAutoAnswer.setText(prefs.autoAnswerDelay.toString())
-
-            // Transport spinner
             val transports = arrayOf("UDP", "TCP", "TLS")
             val idx = transports.indexOf(prefs.transport.uppercase()).coerceAtLeast(0)
             spinnerTransport.setSelection(idx)
@@ -65,10 +61,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
-        binding.btnSave.setOnClickListener {
-            saveSettings()
-        }
-
+        binding.btnSave.setOnClickListener { saveSettings() }
         binding.btnRegister.setOnClickListener {
             if (prefs.isConfigured()) {
                 service?.registerAccount()
@@ -77,8 +70,6 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Önce ayarları kaydedin!", Toast.LENGTH_SHORT).show()
             }
         }
-
-
     }
 
     private fun saveSettings() {
@@ -86,9 +77,6 @@ class MainActivity : AppCompatActivity() {
             val username = etUsername.text.toString().trim()
             val password = etPassword.text.toString().trim()
             val domain = etDomain.text.toString().trim()
-            val portStr = etPort.text.toString().trim()
-            val dtmf = etDtmfCode.text.toString().trim()
-            val autoAnswer = etAutoAnswer.text.toString().trim().toIntOrNull() ?: 0
 
             if (username.isEmpty() || password.isEmpty() || domain.isEmpty()) {
                 Toast.makeText(this@MainActivity, "Kullanıcı adı, şifre ve domain zorunludur!", Toast.LENGTH_LONG).show()
@@ -98,14 +86,12 @@ class MainActivity : AppCompatActivity() {
             prefs.username = username
             prefs.password = password
             prefs.domain = domain
-            prefs.port = portStr.toIntOrNull() ?: 5060
+            prefs.port = etPort.text.toString().trim().toIntOrNull() ?: 5060
             prefs.transport = spinnerTransport.selectedItem.toString()
-            prefs.doorDtmfCode = dtmf.ifEmpty { "#" }
-            prefs.autoAnswerDelay = autoAnswer
+            prefs.doorDtmfCode = etDtmfCode.text.toString().trim().ifEmpty { "#" }
+            prefs.autoAnswerDelay = etAutoAnswer.text.toString().trim().toIntOrNull() ?: 0
 
             Toast.makeText(this@MainActivity, "Ayarlar kaydedildi!", Toast.LENGTH_SHORT).show()
-
-            // Otomatik olarak kayıt başlat
             service?.registerAccount()
         }
     }
@@ -122,9 +108,27 @@ class MainActivity : AppCompatActivity() {
         binding.tvStatus.setTextColor(color)
     }
 
-    // ─────────────────────────────────────────────
-    // İzinler
-    // ─────────────────────────────────────────────
+    /** Batarya optimizasyonundan muaf tut — arka planda çalışmak için zorunlu */
+    private fun requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                try {
+                    startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    })
+                } catch (e: Exception) {
+                    // Bazı cihazlar bu intent'i desteklemiyor, manuel yönlendirme yap
+                    Toast.makeText(
+                        this,
+                        "Ayarlar > Uygulamalar > SipDoor > Pil > Kısıtlama Yok seçin",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
     private fun requestRequiredPermissions() {
         val permissions = mutableListOf(
             Manifest.permission.RECORD_AUDIO,
@@ -134,11 +138,9 @@ class MainActivity : AppCompatActivity() {
                 add(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
-
         val missing = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
-
         if (missing.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, missing.toTypedArray(), REQ_PERMISSIONS)
         }
@@ -153,11 +155,7 @@ class MainActivity : AppCompatActivity() {
                 .filter { it.second != PackageManager.PERMISSION_GRANTED }
                 .map { it.first }
             if (denied.isNotEmpty()) {
-                Toast.makeText(
-                    this,
-                    "Bazı izinler reddedildi: ${denied.joinToString()}",
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(this, "Bazı izinler reddedildi!", Toast.LENGTH_LONG).show()
             }
         }
     }
