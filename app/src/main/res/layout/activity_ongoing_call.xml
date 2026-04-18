@@ -6,8 +6,7 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- Uzak video (Fanvil kamerası) - tam ekran arka plan -->
-    <org.linphone.core.tools.compatibility.surface.SurfaceTextureView
+    <SurfaceView
         android:id="@+id/video_remote"
         android:layout_width="0dp"
         android:layout_height="0dp"
@@ -16,8 +15,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Yerel video (küçük, köşede) -->
-    <org.linphone.core.tools.compatibility.surface.SurfaceTextureView
+    <SurfaceView
         android:id="@+id/video_local"
         android:layout_width="100dp"
         android:layout_height="130dp"
@@ -26,7 +24,6 @@
         android:layout_margin="12dp"
         android:background="#33FFFFFF" />
 
-    <!-- Üst bilgi şeridi -->
     <LinearLayout
         android:id="@+id/layout_top"
         android:layout_width="0dp"
@@ -56,7 +53,6 @@
             android:textSize="16sp" />
     </LinearLayout>
 
-    <!-- Kapı açma bildirimi -->
     <TextView
         android:id="@+id/tv_door_status"
         android:layout_width="wrap_content"
@@ -74,7 +70,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Alt kontrol paneli -->
     <LinearLayout
         android:id="@+id/layout_bottom"
         android:layout_width="0dp"
@@ -86,7 +81,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- DTMF input göstergesi -->
         <TextView
             android:id="@+id/tv_dtmf_input"
             android:layout_width="match_parent"
@@ -98,7 +92,6 @@
             android:minHeight="28dp"
             android:layout_marginBottom="8dp" />
 
-        <!-- 🚪 KAPI AÇ BUTONU - Ana buton -->
         <Button
             android:id="@+id/btn_open_door"
             android:layout_width="match_parent"
@@ -110,7 +103,6 @@
             android:textColor="#FFFFFF"
             android:layout_marginBottom="12dp" />
 
-        <!-- Yan kontroller -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -151,7 +143,6 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
-        <!-- DTMF Klavye (genişletilebilir) -->
         <GridLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -172,7 +163,6 @@
             <Button android:id="@+id/btn_hash" android:text="#" style="@style/DtmfButton" />
         </GridLayout>
 
-        <!-- DTMF kodu bilgisi -->
         <TextView
             android:id="@+id/tv_dtmf_code"
             android:layout_width="match_parent"
