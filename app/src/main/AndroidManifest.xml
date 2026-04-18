@@ -75,8 +75,8 @@
             android:name=".LinphoneService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="microphone|camera" />
-
+            android:foregroundServiceType="microphone|camera"
+            android:stopWithTask="false" />
         <!-- Bildirim butonları için receiver -->
         <receiver
             android:name=".CallNotificationReceiver"
