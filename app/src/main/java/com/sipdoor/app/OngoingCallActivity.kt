@@ -44,14 +44,7 @@ class OngoingCallActivity : AppCompatActivity() {
             override fun surfaceDestroyed(holder: SurfaceHolder) {}
         })
 
-        binding.videoLocal.holder.addCallback(object : SurfaceHolder.Callback {
-            override fun surfaceCreated(holder: SurfaceHolder) {
-                service?.getCurrentCall()?.nativePreviewWindowId = binding.videoLocal
-            }
-            override fun surfaceChanged(holder: SurfaceHolder, f: Int, w: Int, h: Int) {}
-            override fun surfaceDestroyed(holder: SurfaceHolder) {}
-        })
-    }
+           }
 
     private fun setupCallInfo() {
         val call = service?.getCurrentCall()
