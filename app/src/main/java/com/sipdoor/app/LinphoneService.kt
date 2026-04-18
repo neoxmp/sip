@@ -11,36 +11,24 @@ import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import org.linphone.core.*
 
-/**
- * SIP bağlantısını arka planda yöneten Foreground Service.
- * Uygulama kapalıyken bile çağrıları alabilmek için cihaz açıldığında başlar.
- */
 class LinphoneService : LifecycleService() {
 
     private lateinit var core: Core
     private lateinit var prefs: SipPreferences
     private var wakeLock: PowerManager.WakeLock? = null
-
     private val binder = LocalBinder()
 
     inner class LocalBinder : Binder() {
         fun getService(): LinphoneService = this@LinphoneService
     }
 
-    // Dışarıdan çağrı durumunu dinlemek için callback
     var onIncomingCall: ((Call) -> Unit)? = null
     var onCallEnded: (() -> Unit)? = null
     var onRegistrationChanged: ((RegistrationState) -> Unit)? = null
 
-    // ─────────────────────────────────────────────
-    // Linphone Core Listener
-    // ─────────────────────────────────────────────
     private val coreListener = object : CoreListenerStub() {
-
-        override fun onCallStateChanged(
-            core: Core, call: Call, state: Call.State, message: String
-        ) {
-            Log.d(TAG, "Çağrı durumu: $state - $message")
+        override fun onCallStateChanged(core: Core, call: Call, state: Call.State, message: String) {
+            Log.d(TAG, "Çağrı durumu: $state")
             when (state) {
                 Call.State.IncomingReceived -> {
                     acquireWakeLock()
@@ -62,17 +50,13 @@ class LinphoneService : LifecycleService() {
         }
 
         override fun onAccountRegistrationStateChanged(
-            core: Core, account: Account,
-            state: RegistrationState, message: String
+            core: Core, account: Account, state: RegistrationState, message: String
         ) {
-            Log.d(TAG, "Kayıt durumu: $state - $message")
+            Log.d(TAG, "Kayıt durumu: $state")
             onRegistrationChanged?.invoke(state)
         }
     }
 
-    // ─────────────────────────────────────────────
-    // Service Lifecycle
-    // ─────────────────────────────────────────────
     override fun onCreate() {
         super.onCreate()
         prefs = SipPreferences(this)
@@ -83,7 +67,7 @@ class LinphoneService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        return START_STICKY // Sistem tarafından öldürülürse otomatik yeniden başlat
+        return START_STICKY
     }
 
     override fun onBind(intent: Intent): IBinder {
@@ -98,41 +82,26 @@ class LinphoneService : LifecycleService() {
         super.onDestroy()
     }
 
-    // ─────────────────────────────────────────────
-    // Linphone Başlatma
-    // ─────────────────────────────────────────────
     private fun initLinphoneCore() {
         val factory = Factory.instance()
         factory.setDebugMode(true, "SipDoor")
-
         core = factory.createCore(null, null, this)
         core.addListener(coreListener)
 
-        // Video codec'leri etkinleştir (görüntülü arama için)
-        for (codec in core.videoCodecs) {
-            core.enablePayloadType(codec, true)
-        }
-
-        core.videoCaptureEnabled = true
-        core.videoDisplayEnabled = true
-        core.videoActivationPolicy = core.videoActivationPolicy.also {
-            it.automaticallyInitiate = false  // Kullanıcı onayıyla başlat
-            it.automaticallyAccept = true     // Karşı tarafın video teklifini kabul et
+        try {
+            val policy = Factory.instance().createVideoActivationPolicy()
+            policy.automaticallyInitiate = false
+            policy.automaticallyAccept = true
+            core.videoActivationPolicy = policy
+        } catch (e: Exception) {
+            Log.w(TAG, "Video policy ayarlanamadı: ${e.message}")
         }
 
         core.start()
-
-        // Kaydedilmiş SIP hesabı varsa kaydet
-        if (prefs.isConfigured()) {
-            registerAccount()
-        }
+        if (prefs.isConfigured()) registerAccount()
     }
 
-    // ─────────────────────────────────────────────
-    // Hesap Kaydı
-    // ─────────────────────────────────────────────
     fun registerAccount() {
-        // Eski hesapları temizle
         core.clearAccounts()
         core.clearAllAuthInfo()
 
@@ -147,126 +116,74 @@ class LinphoneService : LifecycleService() {
             else -> TransportType.Udp
         }
 
-        // Auth bilgisi
         val authInfo = factory.createAuthInfo(username, null, password, null, null, domain)
         core.addAuthInfo(authInfo)
 
-        // Hesap parametreleri
         val accountParams = core.createAccountParams()
-        val identity = factory.createAddress("sip:$username@$domain")
-        accountParams.identityAddress = identity
-
+        accountParams.identityAddress = factory.createAddress("sip:$username@$domain")
         val serverAddress = factory.createAddress("sip:$domain:$port")
         serverAddress?.transport = transport
         accountParams.serverAddress = serverAddress
-        accountParams.registerEnabled = true
-
-        // Kayıt yenileme aralığı (saniye)
+        accountParams.isRegisterEnabled = true
         accountParams.expires = 3600
 
         val account = core.createAccount(accountParams)
         core.addAccount(account)
         core.defaultAccount = account
-
-        Log.d(TAG, "SIP kaydı başlatıldı: $username@$domain:$port")
+        Log.d(TAG, "SIP kaydı: $username@$domain:$port")
     }
 
-    fun unregisterAccount() {
-        core.defaultAccount?.apply {
-            val params = params.clone()
-            params.registerEnabled = false
-            setParams(params)
-        }
-    }
-
-    // ─────────────────────────────────────────────
-    // Çağrı İşlemleri
-    // ─────────────────────────────────────────────
-
-    /** Gelen çağrıyı sesli olarak yanıtla */
     fun answerCall(withVideo: Boolean = false) {
         val call = core.currentCall ?: return
         val params = core.createCallParams(call)
-        params?.videoEnabled = withVideo
+        params?.isVideoEnabled = withVideo
         call.acceptWithParams(params)
-        Log.d(TAG, "Çağrı yanıtlandı (video=$withVideo)")
     }
 
-    /** Gelen çağrıyı reddet */
-    fun declineCall() {
-        core.currentCall?.decline(Reason.Declined)
-        Log.d(TAG, "Çağrı reddedildi")
-    }
+    fun declineCall() { core.currentCall?.decline(Reason.Declined) }
+    fun hangUp() { core.currentCall?.terminate() }
 
-    /** Aktif çağrıyı sonlandır */
-    fun hangUp() {
-        core.currentCall?.terminate()
-        Log.d(TAG, "Çağrı sonlandırıldı")
-    }
-
-    /** DTMF tonu gönder (kapı açma) */
     fun sendDtmf(digit: Char) {
         core.currentCall?.sendDtmf(digit)
-        Log.d(TAG, "DTMF gönderildi: $digit")
+        Log.d(TAG, "DTMF: $digit")
     }
 
-    /** Preferences'taki kapı kodunu gönder */
     fun openDoor() {
-        val code = prefs.doorDtmfCode
-        code.forEach { char ->
+        prefs.doorDtmfCode.forEach { char ->
             sendDtmf(char)
-            Thread.sleep(200) // Karakterler arası bekleme
+            Thread.sleep(200)
         }
-        Log.d(TAG, "Kapı açma kodu gönderildi: $code")
     }
 
-    /** Mikrofonu sessize al / aç */
     fun toggleMute(): Boolean {
-        core.micEnabled = !core.micEnabled
-        return !core.micEnabled // true = muted
+        core.isMicEnabled = !core.isMicEnabled
+        return !core.isMicEnabled
     }
 
-    /** Hoparlörü aç / kapat */
     fun toggleSpeaker(): Boolean {
-        val audioDevice = if (core.outputAudioDevice?.type == AudioDevice.Type.Speaker) {
-            core.audioDevices.firstOrNull { it.type == AudioDevice.Type.Earpiece }
-        } else {
-            core.audioDevices.firstOrNull { it.type == AudioDevice.Type.Speaker }
-        }
-        audioDevice?.let { core.outputAudioDevice = it }
+        val isSpeaker = core.outputAudioDevice?.type == AudioDevice.Type.Speaker
+        val target = if (isSpeaker) AudioDevice.Type.Earpiece else AudioDevice.Type.Speaker
+        core.audioDevices.firstOrNull { it.type == target }?.let { core.outputAudioDevice = it }
         return core.outputAudioDevice?.type == AudioDevice.Type.Speaker
     }
 
-    /** Mevcut çağrıyı döndür */
     fun getCurrentCall(): Call? = core.currentCall
+    fun getRegistrationState(): RegistrationState? = core.defaultAccount?.state
 
-    /** Kayıt durumunu döndür */
-    fun getRegistrationState(): RegistrationState? =
-        core.defaultAccount?.state
-
-    // ─────────────────────────────────────────────
-    // Bildirimler
-    // ─────────────────────────────────────────────
     private fun createNotificationChannels() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        // Servis kanalı (sessiz)
         NotificationChannel(CHANNEL_SERVICE, "SIP Servisi", NotificationManager.IMPORTANCE_LOW)
             .also { nm.createNotificationChannel(it) }
-
-        // Gelen çağrı kanalı (yüksek öncelikli)
         NotificationChannel(CHANNEL_INCOMING, "Gelen Çağrılar", NotificationManager.IMPORTANCE_HIGH)
             .apply { lockscreenVisibility = Notification.VISIBILITY_PUBLIC }
             .also { nm.createNotificationChannel(it) }
-
-        // Aktif çağrı kanalı
         NotificationChannel(CHANNEL_ONGOING, "Aktif Çağrı", NotificationManager.IMPORTANCE_LOW)
             .also { nm.createNotificationChannel(it) }
     }
 
     private fun buildServiceNotification(): Notification {
-        val intent = Intent(this, MainActivity::class.java)
-        val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        val pi = PendingIntent.getActivity(this, 0,
+            Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_SERVICE)
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .setContentTitle("SipDoor")
@@ -277,84 +194,54 @@ class LinphoneService : LifecycleService() {
     }
 
     private fun showIncomingCallNotification(call: Call) {
-        val callerName = call.remoteAddress?.displayName
-            ?: call.remoteAddress?.username
-            ?: "Bilinmeyen"
-
-        // Tam ekran intent (kilit ekranında açılır)
-        val fullScreenIntent = Intent(this, IncomingCallActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
-        }
-        val fullScreenPi = PendingIntent.getActivity(
-            this, 1, fullScreenIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        // Yanıtla action
-        val answerPi = PendingIntent.getBroadcast(
-            this, 2,
+        val callerName = call.remoteAddress?.displayName ?: call.remoteAddress?.username ?: "Bilinmeyen"
+        val fullScreenPi = PendingIntent.getActivity(this, 1,
+            Intent(this, IncomingCallActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+            }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val answerPi = PendingIntent.getBroadcast(this, 2,
             Intent(ACTION_ANSWER).setPackage(packageName),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        // Reddet action
-        val declinePi = PendingIntent.getBroadcast(
-            this, 3,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val declinePi = PendingIntent.getBroadcast(this, 3,
             Intent(ACTION_DECLINE).setPackage(packageName),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(
+            NOTIF_ID_INCOMING,
+            NotificationCompat.Builder(this, CHANNEL_INCOMING)
+                .setSmallIcon(android.R.drawable.ic_menu_call)
+                .setContentTitle("Gelen Çağrı").setContentText(callerName)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setFullScreenIntent(fullScreenPi, true)
+                .addAction(android.R.drawable.ic_menu_call, "Yanıtla", answerPi)
+                .addAction(android.R.drawable.ic_delete, "Reddet", declinePi)
+                .setAutoCancel(false).setOngoing(true).build()
         )
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_INCOMING)
-            .setSmallIcon(android.R.drawable.ic_menu_call)
-            .setContentTitle("Gelen Çağrı")
-            .setContentText(callerName)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setFullScreenIntent(fullScreenPi, true)
-            .addAction(android.R.drawable.ic_menu_call, "Yanıtla", answerPi)
-            .addAction(android.R.drawable.ic_delete, "Reddet", declinePi)
-            .setAutoCancel(false)
-            .setOngoing(true)
-            .build()
-
-        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-            .notify(NOTIF_ID_INCOMING, notification)
     }
 
     private fun showOngoingCallNotification() {
-        val intent = Intent(this, OngoingCallActivity::class.java)
-        val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ONGOING)
-            .setSmallIcon(android.R.drawable.ic_menu_call)
-            .setContentTitle("Aktif Çağrı")
-            .setContentText("Çağrı devam ediyor...")
-            .setContentIntent(pi)
-            .setOngoing(true)
-            .build()
-
-        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-            .notify(NOTIF_ID_ONGOING, notification)
+        val pi = PendingIntent.getActivity(this, 0,
+            Intent(this, OngoingCallActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(
+            NOTIF_ID_ONGOING,
+            NotificationCompat.Builder(this, CHANNEL_ONGOING)
+                .setSmallIcon(android.R.drawable.ic_menu_call)
+                .setContentTitle("Aktif Çağrı").setContentText("Çağrı devam ediyor...")
+                .setContentIntent(pi).setOngoing(true).build()
+        )
     }
 
-    private fun cancelIncomingCallNotification() {
-        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-            .cancel(NOTIF_ID_INCOMING)
-    }
+    private fun cancelIncomingCallNotification() =
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIF_ID_INCOMING)
 
-    private fun cancelOngoingCallNotification() {
-        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-            .cancel(NOTIF_ID_ONGOING)
-    }
+    private fun cancelOngoingCallNotification() =
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIF_ID_ONGOING)
 
-    // ─────────────────────────────────────────────
-    // Wake Lock (ekranı açık tut)
-    // ─────────────────────────────────────────────
     private fun acquireWakeLock() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK, "SipDoor::CallWakeLock"
-        ).apply { acquire(60_000L) }
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SipDoor::CallWakeLock")
+            .apply { acquire(60_000L) }
     }
 
     private fun releaseWakeLock() {
