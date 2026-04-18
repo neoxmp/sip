@@ -1,4 +1,3 @@
-// Top-level build file
 buildscript {
     ext.kotlin_version = "1.9.22"
     repositories {
@@ -15,7 +14,6 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        // Linphone SDK repository
         maven { url "https://linphone.org/maven_repository" }
     }
 }
