@@ -10,14 +10,6 @@ buildscript {
     }
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-        maven { url "https://linphone.org/maven_repository" }
-    }
-}
-
 task clean(type: Delete) {
     delete rootProject.buildDir
 }
